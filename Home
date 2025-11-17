@@ -1,0 +1,43 @@
+import React, { useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Zap } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+
+export default function HomePage() {
+  const navigate = useNavigate();
+
+  const { data: user, isLoading } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      if (!user.user_role) {
+        navigate(createPageUrl("RoleSelection"));
+      } else if (user.user_role === 'teacher') {
+        navigate(createPageUrl("TeacherDashboard"));
+      } else {
+        navigate(createPageUrl("StudentDashboard"));
+      }
+    }
+  }, [user, isLoading, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="bg-white/80 backdrop-blur-sm border-emerald-200 p-8">
+          <CardContent className="text-center">
+            <Zap className="w-16 h-16 text-emerald-500 mx-auto mb-4 animate-pulse" />
+            <p className="text-xl text-gray-700">Loading verzalearning...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return null;
+}
