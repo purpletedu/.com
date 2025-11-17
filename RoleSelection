@@ -1,0 +1,130 @@
+import React from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { GraduationCap, Users, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+
+export default function RoleSelectionPage() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: (data) => base44.auth.updateMe(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user'] });
+    },
+  });
+
+  const selectRole = async (role) => {
+    const updateData = { user_role: role };
+    
+    if (role === 'student') {
+      updateData.student_id = `VERZA${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    }
+    
+    await updateUserMutation.mutateAsync(updateData);
+    
+    if (role === 'teacher') {
+      navigate(createPageUrl("TeacherDashboard"));
+    } else {
+      navigate(createPageUrl("StudentDashboard"));
+    }
+  };
+
+  if (user?.user_role) {
+    if (user.user_role === 'teacher') {
+      navigate(createPageUrl("TeacherDashboard"));
+    } else {
+      navigate(createPageUrl("StudentDashboard"));
+    }
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="max-w-4xl w-full">
+        <div className="text-center mb-12">
+          <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
+            <Zap className="w-12 h-12 text-white" />
+          </div>
+          <h1 className="text-5xl font-bold text-gray-800 mb-4">Welcome to verzalearning!</h1>
+          <p className="text-xl text-gray-600">Choose your role to get started</p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8">
+          <Card className="bg-white/90 backdrop-blur-sm border-2 border-emerald-200 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-105 cursor-pointer">
+            <CardHeader className="text-center pb-4">
+              <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl">
+                <GraduationCap className="w-14 h-14 text-white" />
+              </div>
+              <CardTitle className="text-3xl mb-2">Teacher</CardTitle>
+              <CardDescription className="text-base">Create classes and host game rooms for your students</CardDescription>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <ul className="text-left space-y-2 mb-6">
+                <li className="flex items-center gap-2 text-gray-700">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                  Create and manage classes
+                </li>
+                <li className="flex items-center gap-2 text-gray-700">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                  Host game rooms with unique codes
+                </li>
+                <li className="flex items-center gap-2 text-gray-700">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                  Start games and monitor progress
+                </li>
+              </ul>
+              <Button
+                onClick={() => selectRole('teacher')}
+                className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-6 text-lg rounded-xl shadow-lg hover:shadow-xl"
+              >
+                I'm a Teacher
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/90 backdrop-blur-sm border-2 border-cyan-200 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-105 cursor-pointer">
+            <CardHeader className="text-center pb-4">
+              <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl">
+                <Users className="w-14 h-14 text-white" />
+              </div>
+              <CardTitle className="text-3xl mb-2">Student</CardTitle>
+              <CardDescription className="text-base">Join classes and compete in game rooms</CardDescription>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <ul className="text-left space-y-2 mb-6">
+                <li className="flex items-center gap-2 text-gray-700">
+                  <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
+                  Get your unique student ID
+                </li>
+                <li className="flex items-center gap-2 text-gray-700">
+                  <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
+                  Join classes with class codes
+                </li>
+                <li className="flex items-center gap-2 text-gray-700">
+                  <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
+                  Play games and compete with classmates
+                </li>
+              </ul>
+              <Button
+                onClick={() => selectRole('student')}
+                className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-6 text-lg rounded-xl shadow-lg hover:shadow-xl"
+              >
+                I'm a Student
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
