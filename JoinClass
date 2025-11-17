@@ -1,0 +1,111 @@
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Users, ArrowLeft } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { toast } from "sonner";
+
+export default function JoinClassPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [classCode, setClassCode] = useState("");
+
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: allClasses } = useQuery({
+    queryKey: ['all-classes'],
+    queryFn: () => base44.entities.Class.list(),
+    initialData: [],
+  });
+
+  const updateClassMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Class.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-classes'] });
+      toast.success("Joined class successfully!");
+      navigate(createPageUrl("StudentDashboard"));
+    },
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!classCode.trim()) {
+      toast.error("Please enter a class code");
+      return;
+    }
+
+    const classToJoin = allClasses.find(c => c.class_code === classCode.toUpperCase());
+    
+    if (!classToJoin) {
+      toast.error("Invalid class code");
+      return;
+    }
+
+    if (classToJoin.student_emails?.includes(user.email)) {
+      toast.error("You're already in this class");
+      return;
+    }
+
+    updateClassMutation.mutate({
+      id: classToJoin.id,
+      data: {
+        student_emails: [...(classToJoin.student_emails || []), user.email]
+      }
+    });
+  };
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-2xl mx-auto">
+        <Link to={createPageUrl("StudentDashboard")}>
+          <Button variant="ghost" className="mb-6">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </Link>
+
+        <Card className="bg-white/90 backdrop-blur-sm border-2 border-emerald-200 shadow-2xl">
+          <CardHeader>
+            <div className="flex items-center gap-4 mb-2">
+              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center">
+                <Users className="w-6 h-6 text-white" />
+              </div>
+              <CardTitle className="text-3xl">Join a Class</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Enter Class Code
+                </label>
+                <Input
+                  value={classCode}
+                  onChange={(e) => setClassCode(e.target.value.toUpperCase())}
+                  placeholder="ABCD12"
+                  className="text-2xl py-6 text-center font-bold tracking-wider"
+                  maxLength={6}
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={updateClassMutation.isPending}
+                className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-6 text-lg"
+              >
+                {updateClassMutation.isPending ? "Joining..." : "Join Class"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
