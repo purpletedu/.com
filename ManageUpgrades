@@ -1,0 +1,273 @@
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Zap, Plus, Trash2, ArrowLeft } from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { toast } from "sonner";
+
+export default function ManageUpgradesPage() {
+  const queryClient = useQueryClient();
+  const urlParams = new URLSearchParams(window.location.search);
+  const classId = urlParams.get('class_id');
+  
+  const [showForm, setShowForm] = useState(false);
+  const [upgradeName, setUpgradeName] = useState("");
+  const [description, setDescription] = useState("");
+  const [cost, setCost] = useState("");
+  const [effectType, setEffectType] = useState("money_boost");
+  const [effectValue, setEffectValue] = useState("");
+
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: classes } = useQuery({
+    queryKey: ['class', classId],
+    queryFn: () => base44.entities.Class.filter({ id: classId }),
+    enabled: !!classId,
+    initialData: [],
+  });
+
+  const classData = classes[0];
+
+  const { data: upgrades } = useQuery({
+    queryKey: ['upgrades', classId],
+    queryFn: () => base44.entities.Upgrade.filter({ class_id: classId }),
+    enabled: !!classId,
+    initialData: [],
+  });
+
+  const createUpgradeMutation = useMutation({
+    mutationFn: (data) => base44.entities.Upgrade.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['upgrades'] });
+      toast.success("Upgrade created!");
+      resetForm();
+    },
+  });
+
+  const deleteUpgradeMutation = useMutation({
+    mutationFn: (id) => base44.entities.Upgrade.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['upgrades'] });
+      toast.success("Upgrade deleted!");
+    },
+  });
+
+  const resetForm = () => {
+    setUpgradeName("");
+    setDescription("");
+    setCost("");
+    setEffectType("money_boost");
+    setEffectValue("");
+    setShowForm(false);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    if (!upgradeName || !cost || !effectValue) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    createUpgradeMutation.mutate({
+      upgrade_name: upgradeName,
+      description: description,
+      cost: parseFloat(cost),
+      effect_type: effectType,
+      effect_value: parseFloat(effectValue),
+      created_by_teacher: user.email,
+      class_id: classId,
+    });
+  };
+
+  const getEffectDisplay = (upgrade) => {
+    switch (upgrade.effect_type) {
+      case 'money_boost':
+        return `+$${upgrade.effect_value} per question`;
+      case 'multiplier':
+        return `${upgrade.effect_value}x multiplier`;
+      case 'streak_saver':
+        return `Save ${upgrade.effect_value} streaks`;
+      default:
+        return upgrade.effect_value;
+    }
+  };
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        <Link to={createPageUrl("TeacherDashboard")}>
+          <Button variant="ghost" className="mb-6">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </Link>
+
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">Manage Upgrades</h1>
+          <p className="text-gray-600">{classData?.class_name}</p>
+        </div>
+
+        {!showForm ? (
+          <Button
+            onClick={() => setShowForm(true)}
+            className="mb-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Create New Upgrade
+          </Button>
+        ) : (
+          <Card className="bg-white/90 backdrop-blur-sm border-2 border-purple-200 shadow-lg mb-6">
+            <CardHeader>
+              <CardTitle>Create New Upgrade</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Upgrade Name *
+                  </label>
+                  <Input
+                    value={upgradeName}
+                    onChange={(e) => setUpgradeName(e.target.value)}
+                    placeholder="e.g., Money Multiplier"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="What does this upgrade do?"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Cost (in-game currency) *
+                    </label>
+                    <Input
+                      type="number"
+                      value={cost}
+                      onChange={(e) => setCost(e.target.value)}
+                      placeholder="500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Effect Type *
+                    </label>
+                    <Select value={effectType} onValueChange={setEffectType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="money_boost">Money Boost</SelectItem>
+                        <SelectItem value="multiplier">Multiplier</SelectItem>
+                        <SelectItem value="streak_saver">Streak Saver</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Effect Value *
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={effectValue}
+                    onChange={(e) => setEffectValue(e.target.value)}
+                    placeholder="50"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {effectType === 'money_boost' && 'Amount of extra money per question'}
+                    {effectType === 'multiplier' && 'Multiplier value (e.g., 0.5 = 50% boost)'}
+                    {effectType === 'streak_saver' && 'Number of mistakes before losing streak'}
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button type="button" variant="outline" onClick={resetForm} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={createUpgradeMutation.isPending}
+                    className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                  >
+                    {createUpgradeMutation.isPending ? "Creating..." : "Create Upgrade"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid gap-4">
+          {upgrades.length === 0 ? (
+            <Card className="bg-white/90 backdrop-blur-sm border-2 border-purple-200 p-12">
+              <CardContent className="text-center">
+                <Zap className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-xl text-gray-700 mb-2">No upgrades yet</p>
+                <p className="text-gray-600">Create your first upgrade for this class!</p>
+              </CardContent>
+            </Card>
+          ) : (
+            upgrades.map((upgrade) => (
+              <Card key={upgrade.id} className="bg-white/90 backdrop-blur-sm border-2 border-purple-200 shadow-lg">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                          <Zap className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-800">{upgrade.upgrade_name}</h3>
+                          <p className="text-sm text-gray-600">{getEffectDisplay(upgrade)}</p>
+                        </div>
+                      </div>
+                      {upgrade.description && (
+                        <p className="text-gray-600 mb-3 ml-13">{upgrade.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 ml-13">
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-semibold">
+                          ${upgrade.cost}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteUpgradeMutation.mutate(upgrade.id)}
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
