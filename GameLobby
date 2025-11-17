@@ -1,0 +1,217 @@
+import React, { useEffect, useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Play, Users, Copy, Clock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { toast } from "sonner";
+
+export default function GameLobbyPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomId = urlParams.get('room_id');
+  const playerName = urlParams.get('player_name');
+  const audioRef = React.useRef(null);
+
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: rooms } = useQuery({
+    queryKey: ['room', roomId],
+    queryFn: () => base44.entities.Room.filter({ id: roomId }),
+    enabled: !!roomId,
+    initialData: [],
+    refetchInterval: 2000,
+  });
+
+  const room = rooms[0];
+
+  const { data: players } = useQuery({
+    queryKey: ['room-players', roomId],
+    queryFn: () => base44.entities.RoomPlayer.filter({ room_id: roomId }),
+    enabled: !!roomId,
+    initialData: [],
+    refetchInterval: 2000,
+  });
+
+  const { data: musicSettings } = useQuery({
+    queryKey: ['lobby-music'],
+    queryFn: () => base44.entities.AppSettings.filter({ setting_name: "lobby_music" }),
+    initialData: [],
+  });
+
+  const lobbyMusicUrl = musicSettings[0]?.setting_value;
+
+  const createPlayerMutation = useMutation({
+    mutationFn: (data) => base44.entities.RoomPlayer.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['room-players'] });
+    },
+  });
+
+  const updateRoomMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Room.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['room'] });
+    },
+  });
+
+  useEffect(() => {
+    if (room && user && !players.find(p => p.player_email === user.email)) {
+      const displayName = playerName || user.full_name;
+      
+      createPlayerMutation.mutate({
+        room_id: roomId,
+        player_email: user.email,
+        player_name: displayName,
+        current_money: 0,
+        current_streak: 0,
+        questions_answered: 0,
+        correct_answers: 0,
+        upgrades: { money_boost_level: 0, multiplier_level: 0 }
+      });
+    }
+  }, [room, user, players, playerName]);
+
+  useEffect(() => {
+    if (room?.status === 'playing') {
+      navigate(`${createPageUrl("Game")}?room_id=${roomId}`);
+    }
+  }, [room?.status]);
+
+  // Play lobby music
+  useEffect(() => {
+    if (audioRef.current && lobbyMusicUrl) {
+      audioRef.current.volume = 0.4;
+      audioRef.current.loop = true;
+      const playPromise = audioRef.current.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          const playOnInteraction = () => {
+            audioRef.current.play().catch(e => console.log("Play failed:", e));
+            document.removeEventListener('click', playOnInteraction);
+          };
+          document.addEventListener('click', playOnInteraction);
+        });
+      }
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, [lobbyMusicUrl]);
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(room.room_code);
+    toast.success("Room code copied!");
+  };
+
+  const startGame = () => {
+    updateRoomMutation.mutate({
+      id: room.id,
+      data: {
+        status: 'playing',
+        started_at: new Date().toISOString()
+      }
+    });
+  };
+
+  const isTeacher = user?.email === room?.teacher_email;
+
+  if (!room) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="bg-white/80 backdrop-blur-sm border-emerald-200 p-8">
+          <CardContent className="text-center">
+            <Clock className="w-16 h-16 text-emerald-500 mx-auto mb-4 animate-pulse" />
+            <p className="text-xl text-gray-700">Loading lobby...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      {lobbyMusicUrl && <audio ref={audioRef} src={lobbyMusicUrl} />}
+      
+      <div className="max-w-4xl mx-auto">
+        <Card className="bg-white/90 backdrop-blur-sm border-2 border-emerald-200 shadow-2xl mb-8">
+          <CardHeader className="text-center">
+            <CardTitle className="text-4xl mb-4">Game Lobby</CardTitle>
+            <div className="flex items-center justify-center gap-4">
+              <div className="p-6 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl shadow-lg">
+                <p className="text-white text-sm mb-2">Room Code</p>
+                <p className="text-white text-4xl font-bold tracking-wider">{room.room_code}</p>
+              </div>
+              <Button
+                onClick={copyCode}
+                variant="outline"
+                className="h-14 px-6"
+              >
+                <Copy className="w-5 h-5 mr-2" />
+                Copy Code
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div className="flex items-center justify-center gap-2 text-gray-600">
+                <Users className="w-5 h-5" />
+                <span className="text-lg">{players.length} player{players.length !== 1 ? 's' : ''} in lobby</span>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                {players.map((player) => (
+                  <Card key={player.id} className="bg-emerald-50 border-emerald-200">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold">
+                          {player.player_name[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-800">{player.player_name}</p>
+                          {player.player_email === room.teacher_email && (
+                            <p className="text-xs text-emerald-600 font-medium">Teacher</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {isTeacher && (
+                <Button
+                  onClick={startGame}
+                  disabled={players.length === 0 || updateRoomMutation.isPending}
+                  className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-8 text-xl shadow-lg hover:shadow-xl"
+                >
+                  <Play className="w-6 h-6 mr-3" />
+                  Start Game
+                </Button>
+              )}
+
+              {!isTeacher && (
+                <Card className="bg-cyan-50 border-cyan-200">
+                  <CardContent className="p-6 text-center">
+                    <Clock className="w-12 h-12 text-cyan-600 mx-auto mb-3 animate-pulse" />
+                    <p className="text-lg text-gray-700">Waiting for teacher to start the game...</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
