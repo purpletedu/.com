@@ -1,0 +1,183 @@
+import React from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Users, Trophy, Target, TrendingUp } from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+export default function ClassProgressPage() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const classId = urlParams.get('class_id');
+
+  const { data: classes } = useQuery({
+    queryKey: ['class', classId],
+    queryFn: () => base44.entities.Class.filter({ id: classId }),
+    enabled: !!classId,
+    initialData: [],
+  });
+
+  const classData = classes[0];
+
+  const { data: allRoomPlayers } = useQuery({
+    queryKey: ['class-room-players', classId],
+    queryFn: async () => {
+      const rooms = await base44.entities.Room.filter({ class_id: classId });
+      const roomIds = rooms.map(r => r.id);
+      
+      const allPlayers = [];
+      for (const roomId of roomIds) {
+        const players = await base44.entities.RoomPlayer.filter({ room_id: roomId });
+        allPlayers.push(...players);
+      }
+      return allPlayers;
+    },
+    enabled: !!classId,
+    initialData: [],
+  });
+
+  const { data: lessons } = useQuery({
+    queryKey: ['class-lessons', classId],
+    queryFn: () => base44.entities.Lesson.filter({ class_id: classId }),
+    enabled: !!classId,
+    initialData: [],
+  });
+
+  const { data: completions } = useQuery({
+    queryKey: ['lesson-completions', classId],
+    queryFn: () => base44.entities.LessonCompletion.filter({ class_id: classId }),
+    enabled: !!classId,
+    initialData: [],
+  });
+
+  // Aggregate student stats
+  const studentStats = {};
+  classData?.student_emails?.forEach(email => {
+    const playerRecords = allRoomPlayers.filter(p => p.player_email === email);
+    const totalMoney = playerRecords.reduce((sum, p) => sum + (p.current_money || 0), 0);
+    const totalQuestions = playerRecords.reduce((sum, p) => sum + (p.questions_answered || 0), 0);
+    const totalCorrect = playerRecords.reduce((sum, p) => sum + (p.correct_answers || 0), 0);
+    const accuracy = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+    
+    const studentCompletions = completions.filter(c => c.student_email === email);
+    const completedLessons = studentCompletions.length;
+
+    studentStats[email] = {
+      totalMoney,
+      totalQuestions,
+      totalCorrect,
+      accuracy,
+      completedLessons,
+      gamesPlayed: playerRecords.length
+    };
+  });
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        <Link to={createPageUrl("TeacherDashboard")}>
+          <Button variant="ghost" className="mb-6">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </Link>
+
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">{classData?.class_name}</h1>
+          <p className="text-gray-600">Student Progress Overview</p>
+        </div>
+
+        <div className="grid gap-6">
+          {classData?.student_emails?.map((email) => {
+            const stats = studentStats[email] || {};
+            const studentName = email.split('@')[0];
+
+            return (
+              <Card key={email} className="bg-white/90 backdrop-blur-sm border-2 border-emerald-200 shadow-lg">
+                <CardHeader>
+                  <div className="flex items-center gap-4">
+                    <Avatar className="w-12 h-12 border-2 border-emerald-500">
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-teal-500 text-white font-bold">
+                        {studentName[0].toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <CardTitle className="text-2xl">{studentName}</CardTitle>
+                      <p className="text-sm text-gray-600">{email}</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-4 gap-4">
+                    <Card className="bg-emerald-50 border-emerald-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Trophy className="w-5 h-5 text-emerald-600" />
+                          <span className="text-sm text-gray-600">Total Earnings</span>
+                        </div>
+                        <p className="text-2xl font-bold text-emerald-700">${stats.totalMoney || 0}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-cyan-50 border-cyan-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Target className="w-5 h-5 text-cyan-600" />
+                          <span className="text-sm text-gray-600">Accuracy</span>
+                        </div>
+                        <p className="text-2xl font-bold text-cyan-700">{stats.accuracy || 0}%</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-blue-50 border-blue-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <TrendingUp className="w-5 h-5 text-blue-600" />
+                          <span className="text-sm text-gray-600">Questions</span>
+                        </div>
+                        <p className="text-2xl font-bold text-blue-700">{stats.totalQuestions || 0}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-purple-50 border-purple-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Users className="w-5 h-5 text-purple-600" />
+                          <span className="text-sm text-gray-600">Games Played</span>
+                        </div>
+                        <p className="text-2xl font-bold text-purple-700">{stats.gamesPlayed || 0}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {lessons.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-600 mb-2">Lessons: {stats.completedLessons || 0} / {lessons.length} completed</p>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all"
+                          style={{ width: `${(stats.completedLessons || 0) / lessons.length * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {(!classData?.student_emails || classData.student_emails.length === 0) && (
+            <Card className="bg-white/90 backdrop-blur-sm border-2 border-emerald-200 p-12">
+              <CardContent className="text-center">
+                <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-xl text-gray-700">No students in this class yet</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
